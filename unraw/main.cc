@@ -242,26 +242,33 @@ void enhanceDetails(cv::Mat &in, cv::Mat &out, float sigma, float amount)
     in.convertTo(inFloat, CV_32F, 1.0/65535);
     // create a blurred image
     cv::GaussianBlur(inFloat, blur, cv::Size(), sigma);
-
+    
     // for each pixel, extract the higher frequencies by substracting 
     // the blurred image and multiply it to increase details, then add
     // the blurred image again to reconstruct the image
     float* pIn, *pBlur;
-    for(int i = 0; i < in.rows; ++i)
+
+    #pragma omp parallel shared(inFloat, blur) private(pIn, pBlur)
     {
-        pIn = inFloat.ptr<float>(i);
-        pBlur = blur.ptr<float>(i);
-        for (int j = 0; j < in.cols; ++j)
+    #pragma omp for schedule(dynamic) nowait
+        for(int i = 0; i < in.rows; ++i)
         {
-            for(int c = 0;c<3;c++)
+            pIn = inFloat.ptr<float>(i);
+            pBlur = blur.ptr<float>(i);
+
+            for (int j = 0; j < in.cols; ++j)
             {
-                float im = pIn[j*3+c];
-                float b = pBlur[j*3+c];
-                float d = im - b;
-                pBlur[j*3+c] = b + d*amount;
+                for(int c = 0;c<3;c++)
+                {
+                    float im = pIn[j*3+c];
+                    float b = pBlur[j*3+c];
+                    float d = im - b;
+                    pBlur[j*3+c] = b + d*amount;
+                }
             }
         }
     }
+
     // convert back to 16 bit
     blur.convertTo(out, CV_16U, 65535);
     
@@ -427,6 +434,8 @@ int main(int argc, char *argv[])
         
         return 0;
     }
+
+    auto start = high_resolution_clock::now();
     
     cv::Mat image;
     // debayer the raw image
@@ -452,6 +461,11 @@ int main(int argc, char *argv[])
     image.convertTo(image, CV_8U, 1.0/255.0);
     // save final image
     cv::imwrite(outputFile, image);
+
+    auto end = high_resolution_clock::now();
+	auto elapsed_ms = duration_cast<milliseconds>(end - start);
+
+	cout<<"Program: "<< elapsed_ms.count()<<"ms"<<endl;
     
     return 0;
 }
