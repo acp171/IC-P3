@@ -348,6 +348,8 @@ void colorBalance(cv::Mat& in, cv::Mat& out, float percent) {
     std::vector<cv::Mat> tmpsplit; 
     cv::split(in,tmpsplit);
     int max = (in.depth() == CV_8U ? 1<<8 : 1<<16) - 1;
+
+    #pragma omp parallel for
     for(int i=0;i<3;i++) 
     {
         // find the low and high precentile values (based on the input percentile)
