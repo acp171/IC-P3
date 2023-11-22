@@ -451,10 +451,20 @@ int main(int argc, char *argv[])
     // equalize luminance values and increase saturation
     equalization(image, image, 0.0, 1.0, 0.5);
     cv::Mat enhanced, bloomed;
-    // enhance high frequency details
-    enhanceDetails(image, enhanced, 20, 1.25);
-    // compute bloom mask
-    bloom(image, bloomed, 70, 0.9);
+    #pragma omp parallel sections
+    {
+        #pragma omp section
+        {
+            // enhance high frequency details
+            enhanceDetails(image, enhanced, 20, 1.25);
+        }
+
+        #pragma omp section
+        {
+            // compute bloom mask
+            bloom(image, bloomed, 70, 0.9);
+        }
+    }
     // combine enhanced details with bloom mask
     screenMerge(enhanced, bloomed, image);
     // convert to 8 bit image
