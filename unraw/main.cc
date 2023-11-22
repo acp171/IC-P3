@@ -348,6 +348,8 @@ void colorBalance(cv::Mat& in, cv::Mat& out, float percent) {
     std::vector<cv::Mat> tmpsplit; 
     cv::split(in,tmpsplit);
     int max = (in.depth() == CV_8U ? 1<<8 : 1<<16) - 1;
+
+    #pragma omp parallel for
     for(int i=0;i<3;i++) 
     {
         // find the low and high precentile values (based on the input percentile)
@@ -381,19 +383,24 @@ void screenMerge(cv::Mat &in1, cv::Mat &in2, cv::Mat &out)
     in2.convertTo(inFloat2, CV_32F, 1.0/65535);
     cv::Mat tmp = cv::Mat::zeros(inFloat1.size(), inFloat1.type());
     float* pIn1, *pIn2, *pTmp;
-    // apply the screen mode merge
-    for(int i = 0; i < in1.rows; ++i)
+
+    #pragma omp parallel shared(inFloat1, inFloat2, tmp) private(pIn1, pIn2, pTmp)
     {
-        pIn1 = inFloat1.ptr<float>(i);
-        pIn2 = inFloat2.ptr<float>(i);
-        pTmp = tmp.ptr<float>(i);
-        for (int j = 0; j < in1.cols; ++j)
+        #pragma omp for schedule(dynamic) nowait
+        // apply the screen mode merge
+        for(int i = 0; i < in1.rows; ++i)
         {
-            for(int c = 0; c < 3; c++)
+            pIn1 = inFloat1.ptr<float>(i);
+            pIn2 = inFloat2.ptr<float>(i);
+            pTmp = tmp.ptr<float>(i);
+            for (int j = 0; j < in1.cols; ++j)
             {
-                float im = pIn1[j * 3 + c];
-                float m = pIn2[j * 3 + c];
-                pTmp[j * 3 + c] = 1.0 - (1.0 - m) * (1.0 - im);
+                for(int c = 0; c < 3; c++)
+                {
+                    float im = pIn1[j * 3 + c];
+                    float m = pIn2[j * 3 + c];
+                    pTmp[j * 3 + c] = 1.0 - (1.0 - m) * (1.0 - im);
+                }
             }
         }
     }
