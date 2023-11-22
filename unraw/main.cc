@@ -320,6 +320,8 @@ void gammaCorrection(cv::Mat& in, cv::Mat& out, float a, float b, float gamma)
     
     unsigned short* p, *tp;
     // for each pixel, apply the computed LUT
+
+    #pragma omp parallel for private(p, tp)
     for(int i = 0; i < in.rows; ++i)
     {
         p = in.ptr<unsigned short>(i);
