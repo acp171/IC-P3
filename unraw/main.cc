@@ -158,31 +158,28 @@ void debayer(LibRaw* processor, cv::Mat &out)
     
     // create a buffer of ushorts containing the single channel bayer pattern
     std::vector<ushort> bayerData;
-    #pragma omp parallel for private (bayerData)
+    for ( int y = 0; y < height; y++ )
     {
-        for ( int y = 0; y < height; y++ )
+        for ( int x = 0; x < width; x++ )
         {
-            for ( int x = 0; x < width; x++ )
+            // get pixel idx
+            int idx = y * width + x;
+
+            // each pixel is an array of 4 shorts rgbg
+            ushort *rgbg = processor->imgdata.image[idx];
+
+            // even rows are RGRGRG..., odds are GBGBGB...
+            // even rows are RGRGRG..., get red if x is even or green if odd
+            if (y % 2 == 0)
             {
-                // get pixel idx
-                int idx = y * width + x;
-
-                // each pixel is an array of 4 shorts rgbg
-                ushort *rgbg = processor->imgdata.image[idx];
-
-                // even rows are RGRGRG..., odds are GBGBGB...
-                // even rows are RGRGRG..., get red if x is even or green if odd
-                if (y % 2 == 0)
-                {
-                    bool red = x % 2 == 0;
-                    bayerData.push_back(rgbg[red ? 0 : 1]);
-                }
-                // odd rows are GBGBGB..., get green if x is even or blue if odd
-                else
-                {
-                    bool green = x % 2 == 0;
-                    bayerData.push_back(rgbg[green ? 3 : 2]);
-                }
+                bool red = x % 2 == 0;
+                bayerData.push_back(rgbg[red ? 0 : 1]);
+            }
+            // odd rows are GBGBGB..., get green if x is even or blue if odd
+            else
+            {
+                bool green = x % 2 == 0;
+                bayerData.push_back(rgbg[green ? 3 : 2]);
             }
         }
     }
