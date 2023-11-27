@@ -21,7 +21,6 @@ using namespace std::chrono;
 
 void colorBalance(cv::Mat& in, cv::Mat& out, float percent);
 void gammaCorrection(cv::Mat& in, cv::Mat& out, float a, float b, float gamma);
-void sharpening(cv::Mat& in, cv::Mat& out, float sigma, float amount);
 void enhanceDetails(cv::Mat &in, cv::Mat &out, float sigma, float amoount);
 void bloom(cv::Mat &in, cv::Mat &out, float sigma, float threshold);
 void denoise(cv::Mat &in, cv::Mat &out, float sigma);
@@ -128,8 +127,15 @@ void denoise(cv::Mat &in, cv::Mat &out, int windowSize)
 	cv::split(ycrcb, channels);
 
     // remove noise from chrominance channels
-	cv::medianBlur(channels[1], channels[1], windowSize);
-	cv::medianBlur(channels[2], channels[2], windowSize);
+    auto blur1 = std::async(std::launch::async, [&channels, &windowSize] {
+        cv::medianBlur(channels[1], channels[1], windowSize);
+    });
+	auto blur2 = std::async(std::launch::async, [&channels, &windowSize] {
+        cv::medianBlur(channels[2], channels[2], windowSize);
+    });
+	
+    blur1.wait();
+    blur2.wait();
 
     // convert back to RGB and 16 bits
 	cv::merge(channels, out);
@@ -152,28 +158,31 @@ void debayer(LibRaw* processor, cv::Mat &out)
     
     // create a buffer of ushorts containing the single channel bayer pattern
     std::vector<ushort> bayerData;
-    for ( int y = 0; y < height; y++ )
+    #pragma omp parallel for private (bayerData)
     {
-        for ( int x = 0; x < width; x++ )
+        for ( int y = 0; y < height; y++ )
         {
-            // get pixel idx
-            int idx = y * width + x;
-
-            // each pixel is an array of 4 shorts rgbg
-            ushort *rgbg = processor->imgdata.image[idx];
-
-            // even rows are RGRGRG..., odds are GBGBGB...
-            // even rows are RGRGRG..., get red if x is even or green if odd
-            if (y % 2 == 0)
+            for ( int x = 0; x < width; x++ )
             {
-                bool red = x % 2 == 0;
-                bayerData.push_back(rgbg[red ? 0 : 1]);
-            }
-            // odd rows are GBGBGB..., get green if x is even or blue if odd
-            else
-            {
-                bool green = x % 2 == 0;
-                bayerData.push_back(rgbg[green ? 3 : 2]);
+                // get pixel idx
+                int idx = y * width + x;
+
+                // each pixel is an array of 4 shorts rgbg
+                ushort *rgbg = processor->imgdata.image[idx];
+
+                // even rows are RGRGRG..., odds are GBGBGB...
+                // even rows are RGRGRG..., get red if x is even or green if odd
+                if (y % 2 == 0)
+                {
+                    bool red = x % 2 == 0;
+                    bayerData.push_back(rgbg[red ? 0 : 1]);
+                }
+                // odd rows are GBGBGB..., get green if x is even or blue if odd
+                else
+                {
+                    bool green = x % 2 == 0;
+                    bayerData.push_back(rgbg[green ? 3 : 2]);
+                }
             }
         }
     }
@@ -216,21 +225,6 @@ void debayer(LibRaw* processor, cv::Mat &out)
 	auto elapsed_ms = duration_cast<milliseconds>(end - start);
 
 	cout<<"De Bayer: "<<elapsed_ms.count()<<"ms"<<endl;
-}
-
-void sharpening(cv::Mat& in, cv::Mat& out, float sigma, float amount)
-{
-	auto start = high_resolution_clock::now();
-	
-    cv::Mat blurry;
-    // create a blurred image
-    cv::GaussianBlur(in, blurry, cv::Size(), sigma);
-    out = in * (1 + amount) - blurry*amount;
-    
-    auto end = high_resolution_clock::now();
-	auto elapsed_ms = duration_cast<milliseconds>(end - start);
-
-	cout << "Sharpening: " << elapsed_ms.count()<<"ms"<<endl;
 }
 
 void enhanceDetails(cv::Mat &in, cv::Mat &out, float sigma, float amount)
@@ -294,10 +288,21 @@ void bloom(cv::Mat &in, cv::Mat &out, float sigma, float threshold)
     
     // normalize Y channel between 0 and 1
     cv::normalize(channels[0], mask, 0.0, 1.0, cv::NORM_MINMAX);
+    /*auto normalizeFuture = std::async(std::launch::async, [&]() {
+        cv::normalize(channels[0], mask, 0.0, 1.0, cv::NORM_MINMAX);
+    });*/
     // set to 1.0 only pixels above the threshold
-    cv::threshold(mask, mask, threshold, 1.0, cv::THRESH_BINARY);
+    auto thresholdFuture = std::async(std::launch::async, [&]() {
+        cv::threshold(mask, mask, threshold, 1.0, cv::THRESH_BINARY);
+    });
     // apply gaussian blur to thresholded pixels
-    cv::GaussianBlur(mask, mask, cv::Size(), sigma);
+    auto future = std::async(std::launch::async, [&]() {
+        cv::GaussianBlur(mask, mask, cv::Size(), sigma);
+    });
+
+    //normalizeFuture.wait();
+    thresholdFuture.wait();
+    future.wait();
     
     // convert the computed mask to 3 channel image and 16 bit
     cv::cvtColor(mask, mask, cv::COLOR_GRAY2BGR);
