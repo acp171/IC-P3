@@ -285,21 +285,11 @@ void bloom(cv::Mat &in, cv::Mat &out, float sigma, float threshold)
     
     // normalize Y channel between 0 and 1
     cv::normalize(channels[0], mask, 0.0, 1.0, cv::NORM_MINMAX);
-    /*auto normalizeFuture = std::async(std::launch::async, [&]() {
-        cv::normalize(channels[0], mask, 0.0, 1.0, cv::NORM_MINMAX);
-    });*/
     // set to 1.0 only pixels above the threshold
-    auto thresholdFuture = std::async(std::launch::async, [&]() {
-        cv::threshold(mask, mask, threshold, 1.0, cv::THRESH_BINARY);
-    });
+    cv::threshold(mask, mask, threshold, 1.0, cv::THRESH_BINARY);
     // apply gaussian blur to thresholded pixels
-    auto future = std::async(std::launch::async, [&]() {
-        cv::GaussianBlur(mask, mask, cv::Size(), sigma);
-    });
+    cv::GaussianBlur(mask, mask, cv::Size(), sigma);
 
-    //normalizeFuture.wait();
-    thresholdFuture.wait();
-    future.wait();
     
     // convert the computed mask to 3 channel image and 16 bit
     cv::cvtColor(mask, mask, cv::COLOR_GRAY2BGR);
